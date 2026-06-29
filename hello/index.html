@@ -60,6 +60,13 @@
     }
     footer { margin-top: 2rem; font-size: 0.8rem; color: var(--muted); }
     a { color: var(--accent); }
+    @media (max-width: 640px) {
+      .card { padding: 1.5rem; }
+      h1 { font-size: 1.75rem; }
+      .stats { grid-template-columns: 1fr; gap: 1rem; }
+      p.lead { margin-bottom: 1.25rem; }
+      footer { margin-top: 1.5rem; }
+    }
   </style>
 </head>
 <body>

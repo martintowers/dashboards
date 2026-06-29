@@ -21,8 +21,9 @@
             }
 
             .staticrypt-page {
-                width: 360px;
-                padding: 8% 0 0;
+                width: 100%;
+                max-width: 360px;
+                padding: 8% 1rem 0;
                 margin: auto;
                 box-sizing: border-box;
             }
@@ -170,6 +171,11 @@
                 input[type="text"] {
                     font-size: 16px;
                 }
+            }
+            @media (max-width: 420px) {
+                .staticrypt-page { padding: 6% 0.75rem 0; }
+                .staticrypt-form { padding: 30px; }
+                .staticrypt-title { font-size: 1.25em; }
             }
         </style>
     </head>
