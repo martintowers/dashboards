@@ -46,8 +46,14 @@ fi
 
 # ---- 1. place the file ------------------------------------------------------
 mkdir -p "$NAME"
-cp "$SRC" "$NAME/index.html"
-echo "✓ Copied $SRC -> $NAME/index.html"
+DEST="$NAME/index.html"
+# Skip the copy if source and destination are the same file (e.g. redeploying in place).
+if [ "$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")" = "$(cd "$(dirname "$DEST")" && pwd)/$(basename "$DEST")" ]; then
+  echo "✓ Source is already $DEST (in-place redeploy)"
+else
+  cp "$SRC" "$DEST"
+  echo "✓ Copied $SRC -> $DEST"
+fi
 
 # ---- 2. regenerate the root index ------------------------------------------
 generate_index() {
