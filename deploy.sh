@@ -3,13 +3,20 @@
 # deploy.sh — publish a static HTML dashboard to GitHub Pages.
 #
 # Usage:
-#   ./deploy.sh <dashboard-name> <path-to-html-file>
+#   ./deploy.sh [--encrypt | -p <password>] <dashboard-name> <path-to-html-file>
 #
-# Example:
-#   ./deploy.sh sales-q3 ~/Downloads/sales.html
+# Examples:
+#   ./deploy.sh sales-q3 ~/Downloads/sales.html                 # public
+#   ./deploy.sh -p 'hunter2' sales-q3 ~/Downloads/sales.html    # password-protected
+#   STATICRYPT_PASSWORD='hunter2' ./deploy.sh --encrypt sales-q3 ~/Downloads/sales.html
+#
+# Password protection uses StatiCrypt: the dashboard is AES-encrypted *before*
+# it is committed, so the public repo only ever holds ciphertext. Visitors are
+# prompted for the passphrase and the page decrypts in their browser. The
+# plaintext source file is never copied into the repo.
 #
 # What it does:
-#   1. Copies your HTML file into  <dashboard-name>/index.html
+#   1. Places your HTML into <dashboard-name>/index.html (encrypting it if asked)
 #   2. Regenerates the root index.html listing every dashboard
 #   3. Commits and pushes to the main branch
 #   4. Waits for the GitHub Pages deployment to go live
@@ -25,13 +32,27 @@ BASE_URL="https://${GH_USER}.github.io/${REPO}"
 cd "$(dirname "$0")"
 
 # ---- args -------------------------------------------------------------------
-if [ "$#" -ne 2 ]; then
-  echo "Usage: ./deploy.sh <dashboard-name> <path-to-html-file>" >&2
+PASSWORD=""
+ENCRYPT=0
+POSITIONAL=()
+USAGE="Usage: ./deploy.sh [--encrypt | -p <password>] <dashboard-name> <path-to-html-file>"
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    -p|--password) PASSWORD="${2:-}"; ENCRYPT=1; shift 2 ;;
+    --encrypt)     ENCRYPT=1; shift ;;
+    -h|--help)     echo "$USAGE"; exit 0 ;;
+    -*)            echo "Unknown option: $1" >&2; echo "$USAGE" >&2; exit 1 ;;
+    *)             POSITIONAL+=("$1"); shift ;;
+  esac
+done
+
+if [ "${#POSITIONAL[@]}" -ne 2 ]; then
+  echo "$USAGE" >&2
   exit 1
 fi
 
-NAME="$1"
-SRC="$2"
+NAME="${POSITIONAL[0]}"
+SRC="${POSITIONAL[1]}"
 
 # dashboard name must be URL/folder safe
 if ! echo "$NAME" | grep -Eq '^[a-zA-Z0-9._-]+$'; then
@@ -44,15 +65,29 @@ if [ ! -f "$SRC" ]; then
   exit 1
 fi
 
-# ---- 1. place the file ------------------------------------------------------
+# ---- 1. place (and optionally encrypt) the file ----------------------------
 mkdir -p "$NAME"
 DEST="$NAME/index.html"
-# Skip the copy if source and destination are the same file (e.g. redeploying in place).
-if [ "$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")" = "$(cd "$(dirname "$DEST")" && pwd)/$(basename "$DEST")" ]; then
-  echo "✓ Source is already $DEST (in-place redeploy)"
+
+if [ "$ENCRYPT" -eq 1 ]; then
+  # Encrypt with StatiCrypt. Only ciphertext is written into the repo; the
+  # plaintext source ($SRC) is never copied in, so it stays private.
+  tmp="$(mktemp -d)"
+  cp "$SRC" "$tmp/index.html"
+  pw_args=()
+  [ -n "$PASSWORD" ] && pw_args=(-p "$PASSWORD")
+  # With no -p, StatiCrypt uses $STATICRYPT_PASSWORD or prompts interactively.
+  npx --yes staticrypt@3 "$tmp/index.html" ${pw_args[@]+"${pw_args[@]}"} -d "$NAME" -c false --short
+  rm -rf "$tmp"
+  echo "🔒 Encrypted $SRC -> $DEST (password-protected)"
 else
-  cp "$SRC" "$DEST"
-  echo "✓ Copied $SRC -> $DEST"
+  # Skip the copy if source and destination are the same file (in-place redeploy).
+  if [ "$(cd "$(dirname "$SRC")" && pwd)/$(basename "$SRC")" = "$(cd "$(dirname "$DEST")" && pwd)/$(basename "$DEST")" ]; then
+    echo "✓ Source is already $DEST (in-place redeploy)"
+  else
+    cp "$SRC" "$DEST"
+    echo "✓ Copied $SRC -> $DEST"
+  fi
 fi
 
 # ---- 2. regenerate the root index ------------------------------------------
@@ -99,7 +134,12 @@ HEAD
       d="${dir%/}"
       [ -f "$d/index.html" ] || continue
       found=1
-      printf '      <li><a href="%s/"><span class="name">%s</span><span class="arrow">&rarr;</span></a></li>\n' "$d" "$d"
+      # Mark password-protected (StatiCrypt-encrypted) dashboards with a lock.
+      label="$d"
+      if grep -q "staticrypt" "$d/index.html" 2>/dev/null; then
+        label="$d 🔒"
+      fi
+      printf '      <li><a href="%s/"><span class="name">%s</span><span class="arrow">&rarr;</span></a></li>\n' "$d" "$label"
     done
     if [ "$found" -eq 0 ]; then
       printf '      <li class="empty">No dashboards yet.</li>\n'
