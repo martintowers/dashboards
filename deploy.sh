@@ -159,6 +159,14 @@ generate_index
 echo "✓ Regenerated root index.html"
 
 # ---- 3. commit & push -------------------------------------------------------
+# DEPLOY_SKIP_PUSH=1 places/encrypts the file and regenerates the index but
+# leaves the commit+push to the caller — used when batch-deploying many
+# dashboards in one pass so they land in a single commit instead of one per file.
+if [ "${DEPLOY_SKIP_PUSH:-0}" = "1" ]; then
+  echo "↷ Skipping commit/push (DEPLOY_SKIP_PUSH=1)"
+  exit 0
+fi
+
 git add -A
 if git diff --cached --quiet; then
   echo "No changes to commit (content identical to last deploy)."
@@ -168,6 +176,12 @@ else
 fi
 git push -q origin main
 echo "✓ Pushed to origin/main"
+
+# DEPLOY_SKIP_WAIT=1 skips the liveness poll below (e.g. a caller checking once
+# at the end of a batch instead of once per file).
+if [ "${DEPLOY_SKIP_WAIT:-0}" = "1" ]; then
+  exit 0
+fi
 
 # ---- 4. wait for Pages to go live ------------------------------------------
 URL="${BASE_URL}/${NAME}/"
